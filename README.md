@@ -22,6 +22,10 @@ This repo is generic. Anything specific to my own projects lives in a separate p
 | `CLAUDE.md`, `RTK.md` | Instructions | Global instructions loaded in every session: use chromiumfish for web access, CBM before text search, Read instead of `cat`; `RTK.md` explains RTK's condensed output. |
 | [context-mode](https://github.com/mksglu/context-mode) | Plugin | Runs commands in a sandbox and indexes their output, so only matching sections enter the context (`ctx_batch_execute`, `ctx_execute`, `ctx_search`). Registers its own hooks. Pinned to a release tag. |
 | [RTK](https://github.com/rtk-ai/rtk) | CLI | Condenses common command output (git, tests, package managers) before Claude sees it. The Apache-2.0 "oss" build, with telemetry declined. |
+| [Headroom](https://github.com/headroomlabs-ai/headroom) | CLI + MCP server | A local proxy that compresses each API request (history, tool output, code) before it leaves the machine. Its MCP server lets Claude fetch the original of anything it compressed. |
+| `claude` wrapper | Shell function | Runs `claude` through Headroom in bash and zsh. `command claude` runs it directly. |
+| [Caveman](https://github.com/JuliusBrussee/caveman) | Plugin | Makes Claude answer tersely, cutting its own output tokens. Adds `/caveman` and its sub-skills. Pinned to a release tag. |
+| statusline | Script | One line with user, directory, branch, model, context used, 5-hour and 7-day usage, and the time. |
 | expo | Plugin | Expo and React Native skills (routing, native UI, EAS builds and updates) plus the Expo MCP server. |
 | gopls-lsp | Plugin | Go code intelligence (definitions, references, diagnostics) through gopls. |
 | [find-skills](https://github.com/vercel-labs/skills) | Skill | Helps find and install agent skills for a task. |
@@ -37,7 +41,7 @@ The three skills are installed from their upstream repos at pinned commits, unde
 
 ### Where the hooks come from
 
-The CBM, `bash-ban-raw-tools` and test-runner hooks are adapted from [sgaabdu4/claude-code-tips](https://github.com/sgaabdu4/claude-code-tips) (MIT, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)), the companion repo to an article on cutting Claude Code's token use. They differ from the originals in these ways:
+The CBM, `bash-ban-raw-tools` and test-runner hooks and the statusline are adapted from [sgaabdu4/claude-code-tips](https://github.com/sgaabdu4/claude-code-tips) (MIT, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)), the companion repo to an article on cutting Claude Code's token use. The hooks differ from the originals in these ways:
 
 - **State is keyed by the session ID** Claude Code passes to hooks, not by `$PPID`.
 - **Searches in Bash count.** Claude Code's native build (seen on 2.1.302) has no Grep or Glob tools: `grep`, `rg` and `find` in Bash are its built-in search (ugrep and bfs, which skip gitignored files). So the gate watches Bash as well as Grep and Glob, and `grep`/`rg`/`find` are neither blocked nor rewritten. `rtk grep` runs plain grep, which also searches `.venv` and `node_modules`.
@@ -49,6 +53,46 @@ The CBM, `bash-ban-raw-tools` and test-runner hooks are adapted from [sgaabdu4/c
 - **Not ported:**
   - `memory-repo-symlink`: it moves project memory into each repo, where it could get committed.
   - The Copilot and e2e-runner sync hooks: they need VS Code Copilot and agents this repo doesn't ship.
+
+### What else from the article is left out
+
+The article's five layers (CBM, context-mode, RTK, Headroom, Caveman), its hooks, statusline and headline settings are all here. These parts aren't, on purpose:
+
+- **The global `context-mode` CLI and the `context-mode hook claude-code …` entries in `settings.json`.** The article needs them because it registers context-mode's hooks itself. The plugin already registers the same hooks and runs them with `node`, so adding them would run each hook twice.
+- **`run-cli-hook`**, the article's helper for finding tools on a hook's PATH. The hooks here use full paths and step aside when their tool isn't installed.
+- **The `/unleash`, `/e2e`, `/e2e-auto` and `/ship` commands.** They need the author's 21 private agents, an `e2e-protocol` skill and Flutter MCP servers, none of which the article ships. Your own commands, agents and stack rules go in the [overlay](#private-overlay).
+- **`rules/README.md`.** Claude Code loads every file in `~/.claude/rules/` as a rule, so a template there would be loaded into every session.
+- **The Tavily CLI.** chromiumfish handles web search here.
+- **Some settings from the companion repo:**
+  - `BASH_MAX_OUTPUT_LENGTH` and `MAX_MCP_OUTPUT_TOKENS` at 10000 would cut off long output, page fetches included, and RTK and context-mode already condense output.
+  - `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` turns off background commands and agents.
+  - `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and `ANTHROPIC_DEFAULT_OPUS_MODEL` aren't about tokens.
+  - `permissions.defaultMode: auto` and `skipAutoPermissionPrompt` are permission choices; set them in the overlay if you want them.
+- **The workflow sections of the article's `CLAUDE.md`** (principles, TDD routine, subagent rules). They're the author's way of working; `CLAUDE.md` here only covers the tools.
+- **RTK inside Headroom.** Headroom no longer bundles RTK, so RTK is installed on its own.
+- **Fish.** The wrapper covers bash and zsh.
+
+### Things to know about Headroom
+
+- It's a proxy, so it sees every request and response. It keeps the originals of what it compressed in `~/.headroom`.
+- The proxy keeps running on port 8787 after a session ends, and later sessions reuse it. Savings are shown at http://127.0.0.1:8787/dashboard.
+- The first request downloads its compression model (about 260 MB) from Hugging Face.
+- Remote Control doesn't work through the proxy. Use `command claude` for those sessions.
+- Headroom's usage beacon (on by default) and its update check are switched off, since versions are pinned here. `shell.sh` exports `HEADROOM_BEACON=off` and `HEADROOM_UPDATE_CHECK=off`, and `settings.json` sets them too, because Claude Code starts `headroom mcp serve` in every session, including ones not started from a shell.
+- The wrapper also switches off the Serena code-memory MCP server Headroom would register in each project, since CBM covers that.
+- The wrapper doesn't pass `--1m`, which would switch the model to an older Opus. `opus[1m]` in `settings.json` keeps the 1M window through the proxy.
+- The wrapper steps aside when `ANTHROPIC_BASE_URL` is already set (another provider, or a session that's already proxied) and for subcommands that don't call the model, such as `claude mcp` and `claude plugin`.
+- Headroom registers its `headroom` MCP server in `~/.claude.json` on each launch. It's also in `mcp-user.json`, so a new machine has it from the first session.
+- Headroom removes RTK hooks that older versions of it installed. It matches the name `rtk-rewrite.sh` but only removes hooks that point into `~/.headroom/bin`, so this repo's hook is left alone.
+- It's licensed under Apache-2.0.
+
+### Things to know about Caveman
+
+- Every session and subagent starts in caveman mode. `/caveman ultra` (or `/ultracave`) compresses further, and `/caveman off` or "stop caveman" switches it off for the session. To change the default, set `CAVEMAN_DEFAULT_MODE` in `settings.json`'s `env` (for example through the overlay). To drop it entirely, set `"enabledPlugins": {"caveman@caveman": false}` in the overlay's `settings.json`.
+- The article also runs `/caveman:compress` on `CLAUDE.md`. Here, compress `home/dot_claude/CLAUDE.md` in this repo, not `~/.claude/CLAUDE.md`, or the next `chezmoi apply` puts the original back.
+- Its optional "Auto" routing sends prompts to Caveman Cloud, but only after you sign in and turn it on.
+- Its hooks keep their state in `~/.claude/.caveman-*` and `~/.config/caveman`. The hook scripts and the modules they load make no network calls.
+- It's licensed under Apache-2.0.
 
 ### Things to know about context-mode
 
@@ -66,6 +110,9 @@ Key settings in `settings.json`:
 | `effortLevel` / `modelSettings` | `high`, `xhigh` for Opus, Fable and DeepSeek | How much reasoning the model does per turn. |
 | `advisorModel` | `opus` | Model used for the built-in advisor's second opinions. |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | `sonnet` | Runs subagents on Sonnet, which costs less than Opus. |
+| `ENABLE_PROMPT_CACHING_1H` | `1` | Keeps the prompt cache for an hour instead of 5 minutes. |
+| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `50` | Compacts at half the context window instead of near the end. With the 1M window, that's about 500K tokens. |
+| `statusLine` | `~/.claude/statusline-command.sh` | The status line described above. |
 | `permissions.allow` | `Bash(*)`, `Read(*)` | Shell commands and file reads run without prompting. |
 | `skipDangerousModePermissionPrompt` | `true` | Skips the confirmation when entering bypass-permissions mode. |
 
@@ -81,7 +128,7 @@ git clone https://github.com/dazamate/thanos-claude.git ~/projects/thanos-claude
 claude   # log in
 ```
 
-`bootstrap.sh` installs chezmoi and applies everything. chezmoi asks once for a private overlay repo; leave it blank if you don't have one. To answer without a prompt, run it as `THANOS_OVERLAY_REPO= ./bootstrap.sh`. It's safe to re-run.
+`bootstrap.sh` installs chezmoi and applies everything. chezmoi asks once for a private overlay repo; leave it blank if you don't have one. To answer without a prompt, run it as `THANOS_OVERLAY_REPO= ./bootstrap.sh`. It's safe to re-run. Open a new shell before running `claude`, so it goes through Headroom.
 
 ## Private overlay
 
@@ -93,6 +140,9 @@ The overlay is an optional git repo for anything you don't want in this one: pro
 | `mcp.json` → `mcpServers` | User-scope MCP servers in `~/.claude.json`, deep-merged (e.g. extra `env` for a server defined here). |
 | `mcp.json` → `projects` | Project-scope MCP servers in `~/.claude.json`, keyed by project path. |
 | `skills/<name>/` | Symlinked into `~/.claude/skills/<name>`. |
+| `rules/<name>.md` | Symlinked into `~/.claude/rules/`. Claude Code loads each one in every session, or only for matching files when its frontmatter has `paths:`. |
+| `agents/<name>.md` | Symlinked into `~/.claude/agents/` as subagents. |
+| `commands/<name>.md` | Symlinked into `~/.claude/commands/` as slash commands. |
 
 Paths starting with `~/` are expanded to your home directory. An example `mcp.json`:
 
@@ -112,6 +162,21 @@ Paths starting with `~/` are expanded to your home directory. An example `mcp.js
 }
 ```
 
+The article keeps one rule per stack, each naming the skill to use and a short checklist of mistakes Claude keeps making. For example, `rules/typescript.md`:
+
+```markdown
+---
+paths:
+  - "**/*.ts"
+  - "**/*.tsx"
+---
+Invoke the `typescript-expert` skill FIRST.
+
+Self-check before returning:
+1. No `any`: use `unknown` and narrow it.
+2. No `enum`: use `as const` objects.
+```
+
 Every `chezmoi apply` pulls the overlay before applying. To add one later, run `chezmoi init` and enter its URL.
 
 ## Day to day
@@ -124,6 +189,7 @@ Every `chezmoi apply` pulls the overlay before applying. To add one later, run `
 | Upgrade a tool or skill | Bump it in `home/.chezmoidata/packages.yaml`, then `chezmoi apply` |
 | Add or change a user-scope MCP server | Edit `home/.chezmoitemplates/mcp-user.json`, then `chezmoi apply` |
 | Change a setting | Edit `home/.chezmoitemplates/settings.json` (or the overlay's), then `chezmoi apply` |
+| Run one session without Headroom | `command claude` |
 
 Claude Code rewrites `~/.claude/settings.json` itself (e.g. via `/config`), so check `chezmoi diff` and copy any change you want to keep into the template. Close Claude Code before applying an MCP change, since it writes `~/.claude.json` while running. MCP servers are merged into what's already registered, so removing one here doesn't remove it from a machine; use `claude mcp remove` for that.
 
@@ -152,6 +218,8 @@ codeburn works out token use and cost from the session logs Claude Code already 
 
 Costs are what the tokens would cost at API rates. On a Claude subscription that's a measure of usage, not your bill. To see where the tokens go, run `codeburn optimize`, which points out waste, `codeburn context`, which shows what fills a session's context window, or `codeburn report` for the interactive dashboard.
 
+Headroom reports its own savings at http://127.0.0.1:8787/dashboard while its proxy runs.
+
 Each layer can be removed on its own if the numbers don't justify it. Start with context-mode: it adds about 1,200 tokens to every session start, so it has to save more than that.
 
 ## Where things live
@@ -159,7 +227,8 @@ Each layer can be removed on its own if the numbers don't justify it. Start with
 | What | Where in this repo |
 |---|---|
 | `settings.json` | `home/.chezmoitemplates/settings.json`, written by `home/dot_claude/modify_settings.json.tmpl` together with the overlay's settings |
-| `CLAUDE.md`, `RTK.md`, hooks | `home/dot_claude/` |
+| `CLAUDE.md`, `RTK.md`, hooks, statusline | `home/dot_claude/` |
+| The `claude` wrapper | `home/dot_config/thanos-claude/shell.sh`. `home/modify_dot_zshrc.tmpl` and `home/modify_dot_bashrc.tmpl` add a marked block that loads it to the end of `~/.zshrc` and `~/.bashrc`, and leave the rest of those files alone. |
 | RTK's `config.toml` | `home/.chezmoitemplates/rtk-config.toml`, placed in `~/.config/rtk/` (Linux) or `~/Library/Application Support/rtk/` (macOS) |
 | MCP servers in `~/.claude.json` | `home/.chezmoitemplates/mcp-user.json`, merged in by `home/modify_private_dot_claude.json.tmpl`. Only the `mcpServers` entries are touched; the rest of that file is Claude Code's own state and is never stored here. |
 | Pinned tool versions, skills, plugins, source repos | `home/.chezmoidata/packages.yaml` |
@@ -168,8 +237,8 @@ Each layer can be removed on its own if the numbers don't justify it. Start with
 The install scripts run when their content changes, including when a pinned version they use changes. Every step checks before acting, so a re-run only installs what's missing or at the wrong version.
 
 - **Base tools** (before files): git, curl, jq, python3 and venv, uv, Node.js via nvm, Claude Code.
-- **Overlay** (before files, every apply, only if configured): clone or pull it, link its skills.
-- **Claude tools** (after files): codebase-memory-mcp, RTK, codeburn, gopls (only if Go is installed), chromiumfish-web (clone, venv, browser), transcribe-youtube-mcp, plugins and their marketplaces (re-added when a pinned tag changes), skills, and the playwright skill's npm dependencies and Chromium.
+- **Overlay** (before files, every apply, only if configured): clone or pull it, link its skills, rules, agents and commands.
+- **Claude tools** (after files): codebase-memory-mcp, RTK, Headroom (with `uv tool`, on Python 3.12), codeburn, gopls (only if Go is installed), chromiumfish-web (clone, venv, browser), transcribe-youtube-mcp, plugins and their marketplaces (re-added when a pinned tag changes), skills, and the playwright skill's npm dependencies and Chromium.
 
 `vendor/` holds the reviewed installers for chezmoi, codebase-memory-mcp and RTK. All three verify release checksums.
 

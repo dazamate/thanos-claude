@@ -15,7 +15,16 @@
 .claude/chromiumfish/**
 .claude/context-mode/**
 .claude/hooks/context-mode-cache-heal.mjs
+.claude/.caveman-*
+.claude/.caveman-*/**
+.config/caveman/**
+.headroom/**
 **/__pycache__/**
+
+# The `claude` wrapper is added to the rc file of each shell that's installed.
+{{- if not (lookPath "zsh") }}
+.zshrc
+{{- end }}
 
 # RTK keeps its config in the OS's config directory.
 {{- if ne .chezmoi.os "darwin" }}
@@ -29,4 +38,8 @@ Library/**
 # Native Windows isn't supported yet: the scripts and hooks need bash and jq.
 .claude.json
 .claude/hooks/**
+.claude/statusline-command.sh
+.config/thanos-claude/**
+.bashrc
+.zshrc
 {{- end }}

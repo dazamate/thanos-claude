@@ -4,7 +4,7 @@ This repo includes material from other projects. Their licenses apply to that ma
 
 ## sgaabdu4/claude-code-tips (MIT)
 
-The hooks in `home/dot_claude/hooks/` named `cbm-*`, `bash-ban-raw-tools.sh` and `test-runner-nudge.sh` are adapted from https://github.com/sgaabdu4/claude-code-tips, under this license:
+The hooks in `home/dot_claude/hooks/` named `cbm-*`, `bash-ban-raw-tools.sh` and `test-runner-nudge.sh`, and `home/dot_claude/executable_statusline-command.sh`, are adapted from https://github.com/sgaabdu4/claude-code-tips, under this license:
 
 ```
 MIT License

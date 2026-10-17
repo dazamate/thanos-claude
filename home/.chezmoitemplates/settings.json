@@ -1,6 +1,10 @@
 {
   "env": {
-    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",
+    "ENABLE_PROMPT_CACHING_1H": "1",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
+    "HEADROOM_BEACON": "off",
+    "HEADROOM_UPDATE_CHECK": "off"
   },
   "permissions": {
     "allow": [
@@ -78,10 +82,15 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline-command.sh"
+  },
   "enabledPlugins": {
     "gopls-lsp@claude-plugins-official": true,
     "expo@claude-plugins-official": true,
-    "context-mode@context-mode": true
+    "context-mode@context-mode": true,
+    "caveman@caveman": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
@@ -95,6 +104,13 @@
         "source": "github",
         "repo": "mksglu/context-mode",
         "ref": {{ (index .plugins.marketplaces "context-mode").ref | quote }}
+      }
+    },
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman",
+        "ref": {{ .plugins.marketplaces.caveman.ref | quote }}
       }
     }
   },

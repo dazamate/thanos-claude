@@ -9,6 +9,7 @@ versions:
   gopls: "v0.17.0"
   chromiumfish: "0.2.8"
   rtk: "1.0.1"
+  headroom: "0.41.0"
 
 # Source repos for the MCP servers that run from a local checkout.
 repos:
@@ -39,7 +40,11 @@ plugins:
     context-mode:
       repo: "mksglu/context-mode"
       ref: "v1.0.169"
+    caveman:
+      repo: "JuliusBrussee/caveman"
+      ref: "v4.0.1"
   install:
     - "expo@claude-plugins-official"
     - "gopls-lsp@claude-plugins-official"
     - "context-mode@context-mode"
+    - "caveman@caveman"

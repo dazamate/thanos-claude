@@ -10,5 +10,11 @@
     "command": "{{ .chezmoi.homeDir }}/.local/bin/codebase-memory-mcp",
     "args": [],
     "env": {}
+  },
+  "headroom": {
+    "type": "stdio",
+    "command": "{{ .chezmoi.homeDir }}/.local/bin/headroom",
+    "args": ["mcp", "serve"],
+    "env": {}
   }
 }

@@ -28,6 +28,21 @@ else
     sh {{ joinPath .chezmoi.workingTree "vendor/rtk-install.sh" | quote }} </dev/null
 fi
 
+# --- Headroom -----------------------------------------------------------------
+# Local proxy that compresses each API request; `claude` runs through it (see
+# ~/.config/thanos-claude/shell.sh). [proxy] includes the ONNX Kompress model and
+# [code] the AST-aware code compressor. [ml] and [all] would add PyTorch, several
+# GB that only Kompress's optional PyTorch backend uses. Python 3.12, because on
+# 3.10 onnxruntime is held below 1.24, which may fail to load Kompress's 261 MB
+# int8 model and fall back to the 601 MB one.
+headroom_version={{ .versions.headroom | quote }}
+if [ "$(headroom --version 2>/dev/null)" = "headroom, version $headroom_version" ]; then
+  ok "headroom $headroom_version"
+else
+  log "installing headroom $headroom_version"
+  uv tool install --quiet --force --python 3.12 "headroom-ai[proxy,code]==$headroom_version"
+fi
+
 # --- codeburn -----------------------------------------------------------------
 if ! have npm; then
   warn "npm not found; skipping codeburn"

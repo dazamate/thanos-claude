@@ -30,4 +30,4 @@ if [ -n "${THANOS_OVERLAY_REPO+set}" ]; then
   set -- --promptString "Private overlay repo URL (blank for none)=$THANOS_OVERLAY_REPO"
 fi
 chezmoi init --source "$repo_dir" --apply "$@"
-echo "==> done. Run 'claude' and log in if this is a new machine."
+echo "==> done. Open a new shell (so 'claude' runs through Headroom), then run 'claude' and log in if this is a new machine."

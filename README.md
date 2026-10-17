@@ -127,6 +127,33 @@ Every `chezmoi apply` pulls the overlay before applying. To add one later, run `
 
 Claude Code rewrites `~/.claude/settings.json` itself (e.g. via `/config`), so check `chezmoi diff` and copy any change you want to keep into the template. Close Claude Code before applying an MCP change, since it writes `~/.claude.json` while running. MCP servers are merged into what's already registered, so removing one here doesn't remove it from a machine; use `claude mcp remove` for that.
 
+## Measuring the savings
+
+codeburn works out token use and cost from the session logs Claude Code already keeps in `~/.claude/projects/`, so there's nothing to switch on. You can compare any stretch of time before you applied this repo with any stretch after. Claude Code deletes session logs after 30 days by default (the `cleanupPeriodDays` setting), so save a baseline if you'll compare later than that.
+
+1. **Before you apply the repo, save a baseline.** If codeburn isn't installed yet, use `npx codeburn@0.9.27` in place of `codeburn`:
+
+   ```sh
+   codeburn overview -p 30days --provider claude > ~/codeburn-baseline.txt
+   ```
+
+2. **Work normally for a week or two.** Leave out the day you set things up, since it's mostly setup work.
+
+3. **Compare a period before with a period after.** A is the reference period, B the one being measured:
+
+   ```sh
+   codeburn compare-periods --provider claude \
+     --from-a 2026-10-01 --to-a 2026-10-14 \
+     --from-b 2026-10-16 --to-b 2026-10-29 \
+     | jq '{cost_per_100_calls: .normalized.per100Calls, change_pct: .totals.pct}'
+   ```
+
+   Cost per 100 API calls is the fairest number, because it doesn't depend on how much you worked. Totals go up and down with the amount of work.
+
+Costs are what the tokens would cost at API rates. On a Claude subscription that's a measure of usage, not your bill. To see where the tokens go, run `codeburn optimize`, which points out waste, `codeburn context`, which shows what fills a session's context window, or `codeburn report` for the interactive dashboard.
+
+Each layer can be removed on its own if the numbers don't justify it. Start with context-mode: it adds about 1,200 tokens to every session start, so it has to save more than that.
+
 ## Where things live
 
 | What | Where in this repo |

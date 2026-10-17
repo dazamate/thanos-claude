@@ -1,0 +1,22 @@
+# Claude Code state and secrets. Never managed, so `chezmoi add` refuses them too.
+.claude/.credentials.json
+.claude/history.jsonl
+.claude/projects/**
+.claude/file-history/**
+.claude/session-env/**
+.claude/sessions/**
+.claude/shell-snapshots/**
+.claude/paste-cache/**
+.claude/cache/**
+.claude/debug/**
+.claude/backups/**
+.claude/plugins/**
+.claude/skills/synced/**
+.claude/chromiumfish/**
+**/__pycache__/**
+
+{{- if eq .chezmoi.os "windows" }}
+# Native Windows isn't supported yet: the scripts and hooks need bash and jq.
+.claude.json
+.claude/hooks/**
+{{- end }}

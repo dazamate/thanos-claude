@@ -1,0 +1,19 @@
+{{- $overlay := "" }}{{ if index . "overlayRepo" }}{{ $overlay = index . "overlayDir" }}{{ end -}}
+#!/bin/sh
+# ~/.claude/settings.json is this repo's settings, deep-merged with the private
+# overlay's settings.json when one is configured (the overlay wins).
+# Output matches Claude Code's own formatting, so its saves don't show as drift.
+set -eu
+cat >/dev/null
+
+overlay={{ $overlay | quote }}
+settings=$(cat <<'EOF'
+{{ template "settings.json" . }}
+EOF
+)
+
+if [ -n "$overlay" ] && [ -f "$overlay/settings.json" ]; then
+  printf '%s' "$settings" | jq --slurpfile o "$overlay/settings.json" '. * $o[0]'
+else
+  printf '%s' "$settings" | jq .
+fi

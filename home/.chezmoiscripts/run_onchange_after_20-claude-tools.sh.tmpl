@@ -1,0 +1,151 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/bash
+# Claude Code tooling: MCP servers, CLIs, plugins and skills.
+# Runs after files are applied. Every step checks first, so re-running is a no-op.
+set -euo pipefail
+{{ template "lib.sh" . }}
+
+# --- codebase-memory-mcp ------------------------------------------------------
+cbm_version={{ .versions.cbm | quote }}
+if [ "$(codebase-memory-mcp --version </dev/null 2>/dev/null)" = "codebase-memory-mcp $cbm_version" ]; then
+  ok "codebase-memory-mcp $cbm_version"
+else
+  log "installing codebase-memory-mcp $cbm_version"
+  CBM_DOWNLOAD_URL="https://github.com/DeusData/codebase-memory-mcp/releases/download/v$cbm_version" \
+    bash {{ joinPath .chezmoi.workingTree "vendor/cbm-install.sh" | quote }} --skip-config </dev/null
+fi
+codebase-memory-mcp config set auto_index true </dev/null >/dev/null
+codebase-memory-mcp config set ui_enabled false </dev/null >/dev/null
+
+# --- codeburn -----------------------------------------------------------------
+if ! have npm; then
+  warn "npm not found; skipping codeburn"
+elif [ "$(codeburn --version 2>/dev/null)" = {{ .versions.codeburn | quote }} ]; then
+  ok "codeburn {{ .versions.codeburn }}"
+else
+  log "installing codeburn {{ .versions.codeburn }}"
+  npm install -g --silent "codeburn@{{ .versions.codeburn }}"
+fi
+
+# --- gopls (for the gopls-lsp plugin) -----------------------------------------
+if ! have go; then
+  warn "Go not installed; skipping gopls (the gopls-lsp plugin needs it)"
+elif gopls version 2>/dev/null | grep -q "gopls {{ .versions.gopls }}$"; then
+  ok "gopls {{ .versions.gopls }}"
+else
+  log "installing gopls {{ .versions.gopls }}"
+  go install "golang.org/x/tools/gopls@{{ .versions.gopls }}"
+fi
+
+# --- chromiumfish-web MCP server ----------------------------------------------
+cf_repo="$HOME/projects/chromium-fish-mcp"
+cf_dir="$HOME/.claude/chromiumfish"
+if [ -d "$cf_repo/.git" ]; then
+  ok "chromium-fish-mcp checkout"
+else
+  log "cloning chromium-fish-mcp"
+  git clone --quiet {{ .repos.chromiumfish | quote }} "$cf_repo" ||
+    { warn "clone failed; it's private, so run 'gh auth login && gh auth setup-git' and re-apply"; exit 1; }
+fi
+if [ -x "$cf_dir/venv/bin/python" ]; then
+  ok "chromiumfish venv"
+else
+  log "creating chromiumfish venv"
+  python3 -m venv "$cf_dir/venv"
+fi
+cf_installed=$("$cf_dir/venv/bin/python" -c 'import importlib.metadata as m; print(m.version("chromiumfish"))' 2>/dev/null || true)
+if [ "$cf_installed" = {{ .versions.chromiumfish | quote }} ]; then
+  ok "chromiumfish {{ .versions.chromiumfish }}"
+else
+  log "installing chromiumfish {{ .versions.chromiumfish }}"
+  "$cf_dir/venv/bin/pip" install --quiet --upgrade pip
+  "$cf_dir/venv/bin/pip" install --quiet "chromiumfish[mcp]=={{ .versions.chromiumfish }}"
+fi
+# `fetch` skips the download when this browser build is already cached.
+"$cf_dir/venv/bin/chromiumfish" fetch >/dev/null
+ok "chromiumfish browser"
+mkdir -p "$cf_dir/mcp"
+ln -sfn "$cf_repo/mcp/chromiumfish_web.py" "$cf_dir/mcp/chromiumfish_web.py"
+
+# --- transcribe-youtube-mcp ---------------------------------------------------
+yt_repo="$HOME/projects/transcribe-youtube-mcp"
+if [ ! -d "$yt_repo" ]; then
+  log "cloning transcribe-youtube-mcp"
+  git clone --quiet {{ .repos.youtube | quote }} "$yt_repo" ||
+    warn "could not clone transcribe-youtube-mcp; the youtube-transcript server will be unavailable"
+fi
+if [ -f "$yt_repo/pyproject.toml" ]; then
+  uv sync --quiet --directory "$yt_repo"
+  ok "transcribe-youtube-mcp environment"
+fi
+
+# --- Claude Code plugins ------------------------------------------------------
+marketplaces=$(claude plugin marketplace list --json 2>/dev/null || echo '[]')
+{{- range $name, $repo := .plugins.marketplaces }}
+if jq -e --arg n {{ $name | quote }} 'any(.[]; .name == $n)' <<<"$marketplaces" >/dev/null; then
+  ok "marketplace {{ $name }}"
+else
+  log "adding marketplace {{ $name }}"
+  claude plugin marketplace add {{ $repo | quote }}
+fi
+{{- end }}
+plugins=$(claude plugin list --json 2>/dev/null || echo '[]')
+{{- range .plugins.install }}
+if jq -e --arg id {{ . | quote }} 'any(.[]; .id == $id)' <<<"$plugins" >/dev/null; then
+  ok "plugin {{ . }}"
+else
+  log "installing plugin {{ . }}"
+  claude plugin install {{ . | quote }}
+fi
+{{- end }}
+
+# --- skills from upstream -----------------------------------------------------
+# Copies each skill's folder at its pinned commit. A stamp file records which
+# commit is installed, so unchanged skills are skipped.
+install_skill() {
+  local name=$1 repo=$2 src=$3 commit=$4
+  local dest="$HOME/.claude/skills/$name" want="$repo@$commit:$src" tmp
+  if [ "$(cat "$dest/.thanos-source" 2>/dev/null)" = "$want" ]; then
+    ok "skill $name"
+    return
+  fi
+  log "installing skill $name ($repo@${commit:0:7})"
+  tmp=$(mktemp -d)
+  git -C "$tmp" init --quiet
+  git -C "$tmp" remote add origin "https://github.com/$repo.git"
+  git -C "$tmp" config core.sparseCheckout true
+  printf '/%s/\n' "$src" > "$tmp/.git/info/sparse-checkout"
+  git -C "$tmp" fetch --quiet --depth 1 --filter=blob:none origin "$commit"
+  git -C "$tmp" checkout --quiet FETCH_HEAD
+  mkdir -p "$dest"
+  cp -R "$tmp/$src/." "$dest/"
+  printf '%s\n' "$want" > "$dest/.thanos-source"
+  rm -rf "$tmp"
+}
+{{- range .skills }}
+install_skill {{ .name | quote }} {{ .repo | quote }} {{ .path | quote }} {{ .commit | quote }}
+{{- end }}
+
+# --- playwright-bot-bypass skill dependencies ---------------------------------
+skill="$HOME/.claude/skills/playwright-bot-bypass"
+stamp="$skill/node_modules/.lock-sha256"
+lock_sha=$(sha256 "$skill/package-lock.json")
+if ! have npm; then
+  warn "npm not found; skipping playwright-bot-bypass dependencies"
+else
+  if [ "$(cat "$stamp" 2>/dev/null)" = "$lock_sha" ]; then
+    ok "playwright-bot-bypass node_modules"
+  elif [ -d "$skill/node_modules" ] && (cd "$skill" && npm ls --silent >/dev/null 2>&1); then
+    # Already satisfies the lock file (installed before this repo existed).
+    printf '%s\n' "$lock_sha" > "$stamp"
+    ok "playwright-bot-bypass node_modules"
+  else
+    log "installing playwright-bot-bypass dependencies"
+    (cd "$skill" && npm ci --silent)
+    printf '%s\n' "$lock_sha" > "$stamp"
+  fi
+  # Downloads the Chromium build only if this Playwright version's is missing.
+  (cd "$skill" && npx --no-install playwright install chromium >/dev/null)
+  ok "playwright chromium"
+fi
+{{ end -}}

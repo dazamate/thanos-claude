@@ -1,0 +1,10 @@
+{{- $overlayRepo := promptStringOnce . "overlayRepo" "Private overlay repo URL (blank for none)" -}}
+{{- $overlayDir := "" -}}
+{{- if $overlayRepo -}}
+{{-   $overlayDir = promptStringOnce . "overlayDir" "Overlay checkout directory" (joinPath .chezmoi.homeDir ".config/thanos-claude/overlay") -}}
+{{- end -}}
+sourceDir = {{ .chezmoi.workingTree | quote }}
+
+[data]
+  overlayRepo = {{ $overlayRepo | quote }}
+  overlayDir = {{ $overlayDir | quote }}

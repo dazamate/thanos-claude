@@ -1,0 +1,37 @@
+# Pinned versions. Bump a value and run `chezmoi apply`: the install script that
+# uses it re-runs, and each step installs only what doesn't match.
+versions:
+  uv: "0.8.4"
+  nvm: "v0.40.8"
+  node: "26"
+  cbm: "0.12.1"
+  codeburn: "0.9.27"
+  gopls: "v0.17.0"
+  chromiumfish: "0.2.8"
+
+# Source repos for the MCP servers that run from a local checkout.
+repos:
+  chromiumfish: "https://github.com/dazamate/chromium-fish-mcp.git"
+  youtube: "https://github.com/dazamate/transcribe-youtube-mcp.git"
+
+# Third-party skills, installed from their upstream repos at pinned commits.
+skills:
+  - name: find-skills
+    repo: vercel-labs/skills
+    path: skills/find-skills
+    commit: 0b8fb22aaa7f82447d4befe1b6a95d30a5b279b8
+  - name: frontend-design
+    repo: anthropics/skills
+    path: skills/frontend-design
+    commit: 2235be7c60b551f5de82ade908fd3816455afcda
+  - name: playwright-bot-bypass
+    repo: greekr4/playwright-bot-bypass
+    path: skills/playwright-bot-bypass
+    commit: 26efbdea7370814467a8bac296fec6b3a4cdef2a
+
+plugins:
+  marketplaces:
+    claude-plugins-official: "anthropics/claude-plugins-official"
+  install:
+    - "expo@claude-plugins-official"
+    - "gopls-lsp@claude-plugins-official"

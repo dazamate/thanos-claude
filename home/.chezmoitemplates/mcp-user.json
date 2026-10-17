@@ -1,0 +1,14 @@
+{
+  "chromiumfish-web": {
+    "type": "stdio",
+    "command": "{{ .chezmoi.homeDir }}/.claude/chromiumfish/venv/bin/python",
+    "args": ["{{ .chezmoi.homeDir }}/.claude/chromiumfish/mcp/chromiumfish_web.py"],
+    "env": {}
+  },
+  "codebase-memory-mcp": {
+    "type": "stdio",
+    "command": "{{ .chezmoi.homeDir }}/.local/bin/codebase-memory-mcp",
+    "args": [],
+    "env": {}
+  }
+}

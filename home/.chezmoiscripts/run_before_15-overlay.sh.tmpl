@@ -1,0 +1,41 @@
+{{- if and (ne .chezmoi.os "windows") (index . "overlayRepo") -}}
+#!/bin/bash
+# Private overlay: clone or update it, and link its skills into ~/.claude/skills.
+# Runs on every apply, before files, because the settings and MCP edits read it.
+set -euo pipefail
+{{ template "lib.sh" . }}
+
+overlay={{ .overlayDir | quote }}
+if [ -d "$overlay/.git" ]; then
+  git -C "$overlay" pull --ff-only --quiet || warn "could not update the overlay at $overlay; using it as is"
+  ok "overlay"
+else
+  log "cloning overlay into $overlay"
+  mkdir -p "$(dirname "$overlay")"
+  git clone --quiet {{ .overlayRepo | quote }} "$overlay"
+fi
+
+if [ -d "$overlay/skills" ]; then
+  mkdir -p "$HOME/.claude/skills"
+  for src in "$overlay"/skills/*/; do
+    src=${src%/}
+    name=$(basename "$src")
+    dest="$HOME/.claude/skills/$name"
+    if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$src" ]; then
+      ok "overlay skill $name"
+      continue
+    fi
+    if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+      # Replace a plain copy only when it matches the overlay's, so nothing is lost.
+      if diff -rq -x __pycache__ "$src" "$dest" >/dev/null 2>&1; then
+        rm -rf "$dest"
+      else
+        warn "$dest differs from the overlay's copy; leaving it alone"
+        continue
+      fi
+    fi
+    ln -sfn "$src" "$dest"
+    log "linked overlay skill $name"
+  done
+fi
+{{ end -}}

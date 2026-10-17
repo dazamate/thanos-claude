@@ -1,0 +1,81 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/bash
+# Base tools the rest of the setup needs: system packages, uv, Node.js (via nvm) and
+# Claude Code. Runs before files are applied, because the ~/.claude.json edit needs jq.
+# Every step checks first, so re-running is a no-op.
+set -euo pipefail
+{{ template "lib.sh" . }}
+
+# --- system packages ----------------------------------------------------------
+missing=()
+for cmd in git curl jq python3; do have "$cmd" || missing+=("$cmd"); done
+{{- if eq .chezmoi.os "darwin" }}
+pm_install() {
+  have brew || { warn "Homebrew is required on macOS: https://brew.sh"; exit 1; }
+  brew install "$@"
+}
+{{- else }}
+has_lib() {
+  for d in /lib /lib64 /usr/lib /usr/lib64 /lib/*-linux-gnu /usr/lib/*-linux-gnu; do
+    [ -e "$d/$1" ] && return 0
+  done
+  return 1
+}
+# chromiumfish needs venv support; Debian-family distros package it separately.
+need_venv=false
+if ! have python3 || ! python3 -c 'import ensurepip' >/dev/null 2>&1; then need_venv=true; fi
+# Node.js binaries link against libatomic, which minimal installs lack.
+need_atomic=false
+has_lib libatomic.so.1 || need_atomic=true
+if have apt-get; then
+  $need_venv && missing+=(python3-venv)
+  $need_atomic && missing+=(libatomic1)
+  pm_install() { sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@"; }
+elif have dnf; then
+  $need_atomic && missing+=(libatomic)
+  pm_install() { sudo dnf install -y "$@"; }
+elif have pacman; then
+  pm_install() { sudo pacman -S --needed --noconfirm "$@"; }
+else
+  pm_install() { warn "no supported package manager; install these yourself: $*"; exit 1; }
+fi
+{{- end }}
+if [ ${#missing[@]} -eq 0 ]; then
+  ok "system packages"
+else
+  log "installing system packages: ${missing[*]}"
+  pm_install "${missing[@]}"
+fi
+
+# --- uv -----------------------------------------------------------------------
+if have uv; then
+  ok "uv $(uv --version | cut -d' ' -f2)"
+else
+  log "installing uv {{ .versions.uv }}"
+  curl -LsSf "https://astral.sh/uv/{{ .versions.uv }}/install.sh" | sh
+fi
+
+# --- Node.js ------------------------------------------------------------------
+if have node; then
+  ok "node $(node --version)"
+else
+  if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+    log "installing nvm {{ .versions.nvm }}"
+    curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/{{ .versions.nvm }}/install.sh" | bash
+    load_nvm
+  fi
+  log "installing node {{ .versions.node }}"
+  set +u
+  nvm install "{{ .versions.node }}"
+  nvm alias default "{{ .versions.node }}"
+  set -u
+fi
+
+# --- Claude Code --------------------------------------------------------------
+if have claude; then
+  ok "claude $(claude --version 2>/dev/null | cut -d' ' -f1)"
+else
+  log "installing Claude Code"
+  curl -fsSL https://claude.ai/install.sh | bash
+fi
+{{ end -}}

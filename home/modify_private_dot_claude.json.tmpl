@@ -1,0 +1,31 @@
+{{- $overlay := "" }}{{ if index . "overlayRepo" }}{{ $overlay = index . "overlayDir" }}{{ end -}}
+#!/bin/sh
+# Manage only the MCP server entries in ~/.claude.json. Claude Code owns the rest
+# of the file (account, per-project history, caches), so it is never stored here.
+# This repo's user-scope servers are merged into whatever is already registered.
+# The private overlay's mcp.json, if configured, is merged on top and sets
+# project-scope servers.
+set -eu
+
+current=$(cat)
+[ -n "$current" ] || current='{}'
+
+overlay={{ $overlay | quote }}
+overlay_mcp='{}'
+if [ -n "$overlay" ] && [ -f "$overlay/mcp.json" ]; then overlay_mcp=$(cat "$overlay/mcp.json"); fi
+
+servers=$(cat <<'EOF'
+{{ template "mcp-user.json" . }}
+EOF
+)
+
+# -j: Claude Code writes the file without a trailing newline.
+printf '%s' "$current" | jq -j \
+  --arg home "$HOME" \
+  --argjson servers "$servers" \
+  --argjson overlay "$overlay_mcp" '
+  def expand: if type == "string" and startswith("~/") then $home + .[1:] else . end;
+  ($overlay | walk(expand)) as $o
+  | .mcpServers = ((.mcpServers // {}) * $servers * ($o.mcpServers // {}))
+  | reduce (($o.projects // {}) | to_entries[]) as $p (.;
+      .projects[$p.key | expand].mcpServers = $p.value)'

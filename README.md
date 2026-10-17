@@ -37,10 +37,11 @@ The three skills are installed from their upstream repos at pinned commits, unde
 
 ### Where the hooks come from
 
-The CBM, `bash-ban-raw-tools` and test-runner hooks are adapted from [sgaabdu4/claude-code-tips](https://github.com/sgaabdu4/claude-code-tips) (MIT), the companion repo to an article on cutting Claude Code's token use. They differ from the originals in these ways:
+The CBM, `bash-ban-raw-tools` and test-runner hooks are adapted from [sgaabdu4/claude-code-tips](https://github.com/sgaabdu4/claude-code-tips) (MIT, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)), the companion repo to an article on cutting Claude Code's token use. They differ from the originals in these ways:
 
 - **State is keyed by the session ID** Claude Code passes to hooks, not by `$PPID`.
-- **Searches in Bash count.** Claude Code's native build has no Grep or Glob tools: `grep`, `rg` and `find` in Bash are its built-in search (ugrep and bfs, which skip gitignored files). So the gate also watches Bash, and `grep`/`rg`/`find` are neither blocked nor rewritten. `rtk grep` runs plain grep, which also searches `.venv` and `node_modules`.
+- **Searches in Bash count.** Claude Code's native build (seen on 2.1.302) has no Grep or Glob tools: `grep`, `rg` and `find` in Bash are its built-in search (ugrep and bfs, which skip gitignored files). So the gate watches Bash as well as Grep and Glob, and `grep`/`rg`/`find` are neither blocked nor rewritten. `rtk grep` runs plain grep, which also searches `.venv` and `node_modules`.
+- **No `| head` / `| tail` rule.** The original blocked `grep … | head`, but the trim happens before Claude sees the output.
 - **Read isn't gated.** CBM's own guidance is to read files freely and to read before editing.
 - **The unlock check works on Linux.** The original ran BSD `stat` first, which fails there.
 - **RTK's auto-approve is removed.** RTK returns "allow" for any command your allow rules cover. Auto mode drops broad rules like `Bash(*)` so its classifier can review each command, and passing RTK's "allow" through could skip that review. RTK is registered through `rtk-rewrite.sh`, which keeps the rewrite and drops the decision, so RTK's "hook not found" warning is turned off in its config.
@@ -151,4 +152,4 @@ Login credentials (`~/.claude/.credentials.json`), history, session transcripts,
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The skills and tools it installs keep their own licenses.
+MIT, see [LICENSE](LICENSE). The skills and tools it installs keep their own licenses, and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) covers the material this repo includes from other projects.

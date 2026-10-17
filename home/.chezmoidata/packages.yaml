@@ -8,6 +8,7 @@ versions:
   codeburn: "0.9.27"
   gopls: "v0.17.0"
   chromiumfish: "0.2.8"
+  rtk: "1.0.1"
 
 # Source repos for the MCP servers that run from a local checkout.
 repos:
@@ -30,8 +31,15 @@ skills:
     commit: 26efbdea7370814467a8bac296fec6b3a4cdef2a
 
 plugins:
+  # GitHub repos, optionally pinned to a tag (ref). Changing a ref re-adds the
+  # marketplace and reinstalls its plugins.
   marketplaces:
-    claude-plugins-official: "anthropics/claude-plugins-official"
+    claude-plugins-official:
+      repo: "anthropics/claude-plugins-official"
+    context-mode:
+      repo: "mksglu/context-mode"
+      ref: "v1.0.169"
   install:
     - "expo@claude-plugins-official"
     - "gopls-lsp@claude-plugins-official"
+    - "context-mode@context-mode"

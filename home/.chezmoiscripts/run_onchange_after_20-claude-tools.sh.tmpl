@@ -17,6 +17,17 @@ fi
 codebase-memory-mcp config set auto_index true </dev/null >/dev/null
 codebase-memory-mcp config set ui_enabled false </dev/null >/dev/null
 
+# --- RTK ----------------------------------------------------------------------
+# The oss edition is the Apache-2.0 build, without the BUSL-licensed engine.
+rtk_version={{ .versions.rtk | quote }}
+if [ "$(rtk --version 2>/dev/null)" = "rtk $rtk_version" ]; then
+  ok "rtk $rtk_version"
+else
+  log "installing rtk $rtk_version"
+  RTK_VERSION="v$rtk_version" RTK_EDITION=oss \
+    sh {{ joinPath .chezmoi.workingTree "vendor/rtk-install.sh" | quote }} </dev/null
+fi
+
 # --- codeburn -----------------------------------------------------------------
 if ! have npm; then
   warn "npm not found; skipping codeburn"
@@ -81,12 +92,21 @@ fi
 
 # --- Claude Code plugins ------------------------------------------------------
 marketplaces=$(claude plugin marketplace list --json 2>/dev/null || echo '[]')
-{{- range $name, $repo := .plugins.marketplaces }}
-if jq -e --arg n {{ $name | quote }} 'any(.[]; .name == $n)' <<<"$marketplaces" >/dev/null; then
+{{- range $name, $m := .plugins.marketplaces }}
+{{- $source := $m.repo }}{{ if hasKey $m "ref" }}{{ $source = printf "%s#%s" $m.repo $m.ref }}{{ end }}
+current=$(jq -r --arg n {{ $name | quote }} \
+  '.[] | select(.name == $n) | .repo + (if .ref then "#" + .ref else "" end)' <<<"$marketplaces")
+if [ "$current" = {{ $source | quote }} ]; then
   ok "marketplace {{ $name }}"
 else
-  log "adding marketplace {{ $name }}"
-  claude plugin marketplace add {{ $repo | quote }}
+  if [ -n "$current" ]; then
+    # The pin can only change by re-adding; its plugins are reinstalled below.
+    log "re-pinning marketplace {{ $name }} ($current -> {{ $source }})"
+    claude plugin marketplace remove {{ $name | quote }}
+  else
+    log "adding marketplace {{ $name }}"
+  fi
+  claude plugin marketplace add {{ $source | quote }}
 fi
 {{- end }}
 plugins=$(claude plugin list --json 2>/dev/null || echo '[]')

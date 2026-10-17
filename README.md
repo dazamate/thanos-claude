@@ -14,7 +14,14 @@ This repo is generic. Anything specific to my own projects lives in a separate p
 | [chromiumfish-web](https://github.com/dazamate/chromium-fish-mcp) | MCP server | Web search and page fetching through a stealth Chromium browser. The default web tool. |
 | [transcribe-youtube-mcp](https://github.com/dazamate/transcribe-youtube-mcp) | MCP server | Fetches YouTube video transcripts. Installed, but not registered: add it where you want it with `claude mcp add` or the overlay. |
 | prefer-chromiumfish-web | Hook | Blocks the built-in WebSearch and WebFetch and points Claude to chromiumfish instead. Stays out of the way until chromiumfish is installed, and for the `claude-code-guide` subagent, which can't use MCP tools. |
-| `CLAUDE.md` | Instructions | Global instructions loaded in every session. Currently: use chromiumfish for web access. |
+| cbm-code-discovery-gate, cbm-mcp-marker | Hooks | Block the first text search of a session (grep/find in Bash, or the Grep/Glob tools) with a nudge to use codebase-memory-mcp. Once a CBM tool has run, or the nudge was seen once, searches pass. Only in git repos. |
+| cbm-session-reminder | Hook | Adds CBM's "code discovery protocol" to the context at startup, resume, `/clear` and compaction. |
+| bash-ban-raw-tools | Hook | Blocks `cat`, `head`, `tail` and `wc` in Bash and points Claude to the Read tool. Touching the unlock file named in the message lifts it for 10 minutes. |
+| test-runner-nudge | Hook | The first time a session runs a whole test suite (`go test ./...`, `pytest`, `npm test`, `flutter test` and so on), suggests context-mode's `ctx_batch_execute`. Never blocks. |
+| rtk-rewrite | Hook | Runs RTK's rewrite (`git status` becomes `rtk git status`), with RTK's auto-approval removed. |
+| `CLAUDE.md`, `RTK.md` | Instructions | Global instructions loaded in every session: use chromiumfish for web access, CBM before text search, Read instead of `cat`; `RTK.md` explains RTK's condensed output. |
+| [context-mode](https://github.com/mksglu/context-mode) | Plugin | Runs commands in a sandbox and indexes their output, so only matching sections enter the context (`ctx_batch_execute`, `ctx_execute`, `ctx_search`). Registers its own hooks. Pinned to a release tag. |
+| [RTK](https://github.com/rtk-ai/rtk) | CLI | Condenses common command output (git, tests, package managers) before Claude sees it. The Apache-2.0 "oss" build, with telemetry declined. |
 | expo | Plugin | Expo and React Native skills (routing, native UI, EAS builds and updates) plus the Expo MCP server. |
 | gopls-lsp | Plugin | Go code intelligence (definitions, references, diagnostics) through gopls. |
 | [find-skills](https://github.com/vercel-labs/skills) | Skill | Helps find and install agent skills for a task. |
@@ -27,6 +34,28 @@ This repo is generic. Anything specific to my own projects lives in a separate p
 | git, curl, jq, python3 | System packages | Basics the scripts, the hook and the config edits rely on. |
 
 The three skills are installed from their upstream repos at pinned commits, under their own licenses; this repo doesn't copy them.
+
+### Where the hooks come from
+
+The CBM, `bash-ban-raw-tools` and test-runner hooks are adapted from [sgaabdu4/claude-code-tips](https://github.com/sgaabdu4/claude-code-tips) (MIT), the companion repo to an article on cutting Claude Code's token use. They differ from the originals in these ways:
+
+- **State is keyed by the session ID** Claude Code passes to hooks, not by `$PPID`.
+- **Searches in Bash count.** Claude Code's native build has no Grep or Glob tools: `grep`, `rg` and `find` in Bash are its built-in search (ugrep and bfs, which skip gitignored files). So the gate also watches Bash, and `grep`/`rg`/`find` are neither blocked nor rewritten. `rtk grep` runs plain grep, which also searches `.venv` and `node_modules`.
+- **Read isn't gated.** CBM's own guidance is to read files freely and to read before editing.
+- **The unlock check works on Linux.** The original ran BSD `stat` first, which fails there.
+- **RTK's auto-approve is removed.** RTK returns "allow" for any command your allow rules cover. Auto mode drops broad rules like `Bash(*)` so its classifier can review each command, and passing RTK's "allow" through could skip that review. RTK is registered through `rtk-rewrite.sh`, which keeps the rewrite and drops the decision, so RTK's "hook not found" warning is turned off in its config.
+- **The reminder is registered once.** The original registered it twice, so it was injected twice.
+- **Not ported:**
+  - `memory-repo-symlink`: it moves project memory into each repo, where it could get committed.
+  - The Copilot and e2e-runner sync hooks: they need VS Code Copilot and agents this repo doesn't ship.
+
+### Things to know about context-mode
+
+- It's licensed under Elastic-2.0.
+- It adds about 1,200 tokens of routing instructions at session start.
+- It checks npm for updates.
+- It blocks WebFetch and most `curl`/`wget` calls, pointing Claude at its own fetch tools. `CLAUDE.md` keeps chromiumfish as the web tool.
+- Each time its server starts, it adds a cache-repair hook and its `enabledPlugins` entry to `settings.json` if they're missing. Both are already in the settings template, so it finds nothing to change.
 
 Key settings in `settings.json`:
 
@@ -102,7 +131,8 @@ Claude Code rewrites `~/.claude/settings.json` itself (e.g. via `/config`), so c
 | What | Where in this repo |
 |---|---|
 | `settings.json` | `home/.chezmoitemplates/settings.json`, written by `home/dot_claude/modify_settings.json.tmpl` together with the overlay's settings |
-| `CLAUDE.md`, hooks | `home/dot_claude/` |
+| `CLAUDE.md`, `RTK.md`, hooks | `home/dot_claude/` |
+| RTK's `config.toml` | `home/.chezmoitemplates/rtk-config.toml`, placed in `~/.config/rtk/` (Linux) or `~/Library/Application Support/rtk/` (macOS) |
 | MCP servers in `~/.claude.json` | `home/.chezmoitemplates/mcp-user.json`, merged in by `home/modify_private_dot_claude.json.tmpl`. Only the `mcpServers` entries are touched; the rest of that file is Claude Code's own state and is never stored here. |
 | Pinned tool versions, skills, plugins, source repos | `home/.chezmoidata/packages.yaml` |
 | Install scripts | `home/.chezmoiscripts/` |
@@ -111,9 +141,9 @@ The install scripts run when their content changes, including when a pinned vers
 
 - **Base tools** (before files): git, curl, jq, python3 and venv, uv, Node.js via nvm, Claude Code.
 - **Overlay** (before files, every apply, only if configured): clone or pull it, link its skills.
-- **Claude tools** (after files): codebase-memory-mcp, codeburn, gopls (only if Go is installed), chromiumfish-web (clone, venv, browser), transcribe-youtube-mcp, plugins, skills, and the playwright skill's npm dependencies and Chromium.
+- **Claude tools** (after files): codebase-memory-mcp, RTK, codeburn, gopls (only if Go is installed), chromiumfish-web (clone, venv, browser), transcribe-youtube-mcp, plugins and their marketplaces (re-added when a pinned tag changes), skills, and the playwright skill's npm dependencies and Chromium.
 
-`vendor/` holds the reviewed installers for chezmoi and codebase-memory-mcp. Both verify release checksums.
+`vendor/` holds the reviewed installers for chezmoi, codebase-memory-mcp and RTK. All three verify release checksums.
 
 ## Never stored here
 

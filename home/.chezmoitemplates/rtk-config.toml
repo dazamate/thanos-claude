@@ -1,0 +1,17 @@
+# RTK settings; anything not set here keeps RTK's default (`rtk config` lists them).
+
+# Telemetry stays off. Recording the answer means RTK never asks.
+[telemetry]
+enabled = false
+consent_given = false
+consent_date = "2026-10-17T00:00:00+00:00"
+
+# RTK warns when its hook isn't registered as exactly `rtk hook claude`. It's
+# registered through ~/.claude/hooks/rtk-rewrite.sh instead, so the warning
+# would be printed into every command's output.
+[hooks]
+suppress_hook_warning = true
+# In Claude Code's native build, grep/rg/find in Bash are its own search (ugrep and
+# bfs, which skip gitignored files). `rtk grep` runs plain grep, which searches
+# .venv and node_modules too, so these stay as they are.
+exclude_commands = ["grep", "rg", "find"]

@@ -13,7 +13,17 @@
 .claude/plugins/**
 .claude/skills/synced/**
 .claude/chromiumfish/**
+.claude/context-mode/**
+.claude/hooks/context-mode-cache-heal.mjs
 **/__pycache__/**
+
+# RTK keeps its config in the OS's config directory.
+{{- if ne .chezmoi.os "darwin" }}
+Library/**
+{{- end }}
+{{- if ne .chezmoi.os "linux" }}
+.config/rtk/**
+{{- end }}
 
 {{- if eq .chezmoi.os "windows" }}
 # Native Windows isn't supported yet: the scripts and hooks need bash and jq.

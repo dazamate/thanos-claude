@@ -69,6 +69,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/cbm-session-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/beads-prime.sh"
           }
         ]
       },
@@ -89,6 +93,7 @@
   "enabledPlugins": {
     "gopls-lsp@claude-plugins-official": true,
     "expo@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
     "context-mode@context-mode": true,
     "caveman@caveman": true
   },

@@ -43,6 +43,80 @@ else
   uv tool install --quiet --force --python 3.12 "headroom-ai[proxy,code]==$headroom_version"
 fi
 
+# --- beads (bd) ---------------------------------------------------------------
+# Dependency-aware task graph, one Dolt database per repo in .beads/. The
+# SessionStart hook (~/.claude/hooks/beads-prime.sh) injects context only in
+# repos that have a workspace. Installed from the pinned release asset with its
+# published checksum, since upstream's installer always fetches latest.
+beads_version={{ .versions.beads | quote }}
+# True when dotted version $1 is newer than $2. bd's schema is forward-only,
+# so an out-of-band newer bd must not be replaced by the pin.
+version_gt() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    n = split(a, x, "."); m = split(b, y, ".")
+    for (i = 1; i <= (n > m ? n : m); i++) {
+      ai = (i <= n ? x[i] + 0 : 0); bi = (i <= m ? y[i] + 0 : 0)
+      if (ai > bi) exit 0
+      if (ai < bi) exit 1
+    }
+    exit 1
+  }'
+}
+bd_target="$HOME/.local/bin/bd"
+bd_current=$("$bd_target" version 2>/dev/null || true)
+if [[ "$bd_current" == "bd version $beads_version "* ]]; then
+  ok "beads $beads_version"
+else
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64|Linux-amd64)  beads_platform=linux_amd64 ;;
+    Linux-aarch64|Linux-arm64) beads_platform=linux_arm64 ;;
+    Darwin-x86_64)             beads_platform=darwin_amd64 ;;
+    Darwin-arm64)              beads_platform=darwin_arm64 ;;
+    *)                         beads_platform="" ;;
+  esac
+  if [ -z "$beads_platform" ]; then
+    warn "no beads release for $(uname -s)-$(uname -m); skipping"
+  elif [ -n "$bd_current" ] &&
+       version_gt "$(printf '%s\n' "$bd_current" | awk '{print $3}')" "$beads_version"; then
+    warn "installed $bd_current is newer than pinned $beads_version; leaving it alone (bump the pin to manage it)"
+  else
+    log "installing beads $beads_version"
+    if [ -n "$bd_current" ]; then
+      warn "replacing $bd_current with $beads_version"
+    fi
+    beads_archive="beads_${beads_version}_${beads_platform}.tar.gz"
+    beads_base="https://github.com/gastownhall/beads/releases/download/v$beads_version"
+    beads_tmp=$(mktemp -d)
+    if curl -fsSL -o "$beads_tmp/$beads_archive" "$beads_base/$beads_archive" &&
+       curl -fsSL -o "$beads_tmp/checksums.txt" "$beads_base/checksums.txt"; then
+      beads_expected=$(awk -v target="$beads_archive" \
+        '{name=$2; sub(/^\*/, "", name); if (name == target) {print $1; exit}}' \
+        "$beads_tmp/checksums.txt")
+      if [ -z "$beads_expected" ] || [ "$beads_expected" != "$(sha256 "$beads_tmp/$beads_archive")" ]; then
+        warn "beads checksum missing or mismatched; refusing to install"
+      elif ! tar -xzf "$beads_tmp/$beads_archive" -C "$beads_tmp"; then
+        warn "beads archive did not extract; skipping"
+      else
+        beads_extracted="$beads_tmp/bd"
+        [ -x "$beads_extracted" ] ||
+          beads_extracted=$(find "$beads_tmp" -maxdepth 2 -type f -name bd -print -quit)
+        if [ -z "$beads_extracted" ]; then
+          warn "beads archive did not contain a bd binary"
+        else
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 "$beads_extracted" "$bd_target"
+          ok "beads $beads_version"
+        fi
+      fi
+    else
+      warn "could not download beads $beads_version; skipping"
+    fi
+    rm -rf "$beads_tmp"
+  fi
+fi
+# Anonymous usage metrics stay off, matching RTK and Headroom.
+"$bd_target" metrics off </dev/null >/dev/null 2>&1 || true
+
 # --- codeburn -----------------------------------------------------------------
 if ! have npm; then
   warn "npm not found; skipping codeburn"

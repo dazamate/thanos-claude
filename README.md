@@ -22,12 +22,14 @@ This repo is generic. Anything specific to my own projects lives in a separate p
 | `CLAUDE.md`, `RTK.md` | Instructions | Global instructions loaded in every session: use chromiumfish for web access, CBM before text search, Read instead of `cat`; `RTK.md` explains RTK's condensed output. |
 | [context-mode](https://github.com/mksglu/context-mode) | Plugin | Runs commands in a sandbox and indexes their output, so only matching sections enter the context (`ctx_batch_execute`, `ctx_execute`, `ctx_search`). Registers its own hooks. Pinned to a release tag. |
 | [RTK](https://github.com/rtk-ai/rtk) | CLI | Condenses common command output (git, tests, package managers) before Claude sees it. The Apache-2.0 "oss" build, with telemetry declined. |
+| [Beads](https://github.com/gastownhall/beads) | CLI | Dependency-aware task tracker. Each repo can keep its own `.beads/` Dolt database; a SessionStart hook injects its context and memories. |
 | [Headroom](https://github.com/headroomlabs-ai/headroom) | CLI + MCP server | A local proxy that compresses each API request (history, tool output, code) before it leaves the machine. Its MCP server lets Claude fetch the original of anything it compressed. |
 | `claude` wrapper | Shell function | Runs `claude` through Headroom in bash and zsh. `command claude` runs it directly. |
 | [Caveman](https://github.com/JuliusBrussee/caveman) | Plugin | Makes Claude answer tersely, cutting its own output tokens. Adds `/caveman` and its sub-skills. Pinned to a release tag. |
 | statusline | Script | One line with user, directory, branch, model, context used, 5-hour and 7-day usage, and the time. |
 | expo | Plugin | Expo and React Native skills (routing, native UI, EAS builds and updates) plus the Expo MCP server. |
 | gopls-lsp | Plugin | Go code intelligence (definitions, references, diagnostics) through gopls. |
+| [Superpowers](https://github.com/obra/superpowers) | Plugin | Development workflow skills: brainstorm a spec, write a plan, then build it with subagents, test-first, with reviews. Default settings. |
 | [find-skills](https://github.com/vercel-labs/skills) | Skill | Helps find and install agent skills for a task. |
 | [frontend-design](https://github.com/anthropics/skills) | Skill | Design guidance for building distinctive, non-generic UI. |
 | [playwright-bot-bypass](https://github.com/greekr4/playwright-bot-bypass) | Skill | Browser automation that avoids bot detection, using rebrowser-playwright. |
@@ -93,6 +95,17 @@ The article's five layers (CBM, context-mode, RTK, Headroom, Caveman), its hooks
 - Its optional "Auto" routing sends prompts to Caveman Cloud, but only after you sign in and turn it on.
 - Its hooks keep their state in `~/.claude/.caveman-*` and `~/.config/caveman`. The hook scripts and the modules they load make no network calls.
 - It's licensed under Apache-2.0.
+
+### Things to know about Beads
+
+- It's the CLI plus a SessionStart hook, not the MCP server. Beads' own guidance puts the CLI at ~1–2k tokens per session against 10–50k for the MCP schemas; the managed context here is shorter, plus the memories section.
+- The hook is global but inert: it walks up for a `.beads/` workspace and exits before starting `bd` anywhere else. Only initialized repos pay anything.
+- The workflow text is `~/.claude/beads-prime-context.md`, managed here. Only the memories come from the repo (`bd prime --memories-only`). This deliberately ignores a repo-local `.beads/PRIME.md`, which upstream would echo into context verbatim; a cloned repo could otherwise inject model instructions at session start, outside Claude Code's project trust gate. Upstream's default text also tells agents not to use `MEMORY.md`, which fights the memory split.
+- Initialize a repo with `bd init --quiet --skip-agents`. That leaves `AGENTS.md` alone and avoids a project hook duplicating the global one. Add `--skip-hooks` to keep its git hooks out. `--stealth` keeps `.beads/` out of git only; the Dolt database still exists in the checkout, so don't package or copy the directory to share it.
+- `bd dolt push` and `bd dolt pull` sync through a Dolt remote, and they don't run automatically. Without a configured remote, `bd dolt push` fails and suggests `--yes`; don't use that, since it publishes the issue history. Embedded Dolt is single-writer, so parallel agents in one repo serialize; use `--server` mode for real concurrency.
+- Anonymous usage metrics are turned off by the installer (`bd metrics off`), matching RTK and Headroom.
+- Upgrades are manual, like the other pinned tools. A binary older than the database refuses to open it (`schema version mismatch`). The installer replaces an older binary, but leaves a newer out-of-band `bd` alone instead of downgrading it.
+- To remove it, back up each repo (`bd export --all > beads-backup.jsonl`), then delete `.beads/` and run `bd hooks uninstall` if git hooks were installed. Remove the beads block from `packages.yaml` and the install script, the hook from the settings template, `beads-prime.sh` and `beads-prime-context.md`, then `chezmoi apply`. Embedded mode does not support `bd admin reset`.
 
 ### Things to know about context-mode
 
@@ -188,6 +201,7 @@ Every `chezmoi apply` pulls the overlay before applying. To add one later, run `
 | Start managing a new file | `chezmoi add ~/.claude/<file>` |
 | Upgrade a tool or skill | Bump it in `home/.chezmoidata/packages.yaml`, then `chezmoi apply` |
 | Add or change a user-scope MCP server | Edit `home/.chezmoitemplates/mcp-user.json`, then `chezmoi apply` |
+| Start tracking tasks in a repo with Beads | `bd init --quiet --skip-agents` |
 | Change a setting | Edit `home/.chezmoitemplates/settings.json` (or the overlay's), then `chezmoi apply` |
 | Run one session without Headroom | `command claude` |
 
@@ -228,6 +242,7 @@ Each layer can be removed on its own if the numbers don't justify it. Start with
 |---|---|
 | `settings.json` | `home/.chezmoitemplates/settings.json`, written by `home/dot_claude/modify_settings.json.tmpl` together with the overlay's settings |
 | `CLAUDE.md`, `RTK.md`, hooks, statusline | `home/dot_claude/` |
+| Beads' SessionStart text | `home/dot_claude/beads-prime-context.md` |
 | The `claude` wrapper | `home/dot_config/thanos-claude/shell.sh`. `home/modify_dot_zshrc.tmpl` and `home/modify_dot_bashrc.tmpl` add a marked block that loads it to the end of `~/.zshrc` and `~/.bashrc`, and leave the rest of those files alone. |
 | RTK's `config.toml` | `home/.chezmoitemplates/rtk-config.toml`, placed in `~/.config/rtk/` (Linux) or `~/Library/Application Support/rtk/` (macOS) |
 | MCP servers in `~/.claude.json` | `home/.chezmoitemplates/mcp-user.json`, merged in by `home/modify_private_dot_claude.json.tmpl`. Only the `mcpServers` entries are touched; the rest of that file is Claude Code's own state and is never stored here. |
@@ -238,7 +253,7 @@ The install scripts run when their content changes, including when a pinned vers
 
 - **Base tools** (before files): git, curl, jq, python3 and venv, uv, Node.js via nvm, Claude Code.
 - **Overlay** (before files, every apply, only if configured): clone or pull it, link its skills, rules, agents and commands.
-- **Claude tools** (after files): codebase-memory-mcp, RTK, Headroom (with `uv tool`, on Python 3.12), codeburn, gopls (only if Go is installed), chromiumfish-web (clone, venv, browser), transcribe-youtube-mcp, plugins and their marketplaces (re-added when a pinned tag changes), skills, and the playwright skill's npm dependencies and Chromium.
+- **Claude tools** (after files): codebase-memory-mcp, RTK, Headroom (with `uv tool`, on Python 3.12), beads, codeburn, gopls (only if Go is installed), chromiumfish-web (clone, venv, browser), transcribe-youtube-mcp, plugins and their marketplaces (re-added when a pinned tag changes), skills, and the playwright skill's npm dependencies and Chromium.
 
 `vendor/` holds the reviewed installers for chezmoi, codebase-memory-mcp and RTK. All three verify release checksums.
 

@@ -121,6 +121,7 @@ Key settings in `settings.json`:
 |---|---|---|
 | `model` | `opus[1m]` | Opus with the 1M-token context window as the main model. |
 | `effortLevel` / `modelSettings` | `high`, `xhigh` for Opus, Fable and DeepSeek | How much reasoning the model does per turn. |
+| `ANTHROPIC_CUSTOM_MODEL_OPTION` | `claude-fable-5-2` | Adds Fable 5.2 to the `/model` picker. Through the proxy, the picker only lists the models built into Claude Code, so a newer model is missing until Claude Code is updated. |
 | `advisorModel` | `opus` | Model used for the built-in advisor's second opinions. |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | `sonnet` | Runs subagents on Sonnet, which costs less than Opus. |
 | `ENABLE_PROMPT_CACHING_1H` | `1` | Keeps the prompt cache for an hour instead of 5 minutes. |

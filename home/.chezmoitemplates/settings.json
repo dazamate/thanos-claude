@@ -4,7 +4,9 @@
     "ENABLE_PROMPT_CACHING_1H": "1",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
     "HEADROOM_BEACON": "off",
-    "HEADROOM_UPDATE_CHECK": "off"
+    "HEADROOM_UPDATE_CHECK": "off",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION": "claude-fable-5-2",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Fable 5.2"
   },
   "permissions": {
     "allow": [
